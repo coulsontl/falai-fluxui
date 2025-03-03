@@ -22,11 +22,8 @@ RUN npm install
 # 复制项目所有文件到容器
 COPY . .
 
-# 创建 images 和 uploads 目录（运行时会动态创建，但预先定义确保权限正确）
-RUN mkdir -p images uploads && chown -R node:node images uploads
-
-# 切换到非 root 用户运行（安全性考虑）
-USER node
+# 创建 images 和 uploads 目录（无需调整权限，因为使用 root 用户）
+RUN mkdir -p images uploads
 
 # 暴露端口
 EXPOSE 3000
