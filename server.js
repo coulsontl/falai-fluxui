@@ -13,9 +13,20 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
+// 处理多个 FAL_KEY
+const falKeys = process.env.FAL_KEY.split(',').map(key => key.trim());
+let currentKeyIndex = 0;
+
+// 获取下一个可用的 API Key
+function getNextFalKey() {
+  const key = falKeys[currentKeyIndex];
+  currentKeyIndex = (currentKeyIndex + 1) % falKeys.length;
+  return key;
+}
+
 // Configure fal.ai client with your API key
 fal.config({
-  credentials: process.env.FAL_KEY
+  credentials: getNextFalKey()
 });
 
 // Ensure the images directory exists
@@ -73,12 +84,18 @@ app.post('/generate-image', async (req, res) => {
     if (model === 'fal-ai/flux/dev') {
       input.guidance_scale = parseFloat(req.body.guidance_scale);
       input.enable_safety_checker = false;
-    } else if (model === 'fal-ai/flux-pro') {
-      input.guidance_scale = parseFloat(req.body.guidance_scale);
-      input.safety_tolerance = req.body.safety_tolerance;
     } else if (model === 'fal-ai/flux/schnell') {
       input.enable_safety_checker = false;
+    } else {
+      input.guidance_scale = parseFloat(req.body.guidance_scale);
+      input.safety_tolerance = req.body.safety_tolerance;
     }
+
+    // 配置下一个 API key
+    fal.config({
+      credentials: getNextFalKey()
+    });
+    console.log(`Using FAL_KEY index: ${currentKeyIndex === 0 ? falKeys.length - 1 : currentKeyIndex - 1}`);
 
     const result = await fal.subscribe(model, {
       input,
@@ -217,6 +234,13 @@ app.post('/generate-img2img', upload.single('file'), async (req, res) => {
 
     // Upload the file to fal.ai storage
     const fileContent = await fs.readFile(file.path);
+    
+    // 配置下一个 API key
+    fal.config({
+      credentials: getNextFalKey()
+    });
+    console.log(`Using FAL_KEY index: ${currentKeyIndex === 0 ? falKeys.length - 1 : currentKeyIndex - 1}`);
+    
     const uploadedFileUrl = await fal.storage.upload(fileContent);
 
     const input = {
@@ -229,6 +253,12 @@ app.post('/generate-img2img', upload.single('file'), async (req, res) => {
       enable_safety_checker: false
     };
 
+    // 为 subscribe 操作重新配置 API key (以防上传和生成使用同一个 key 导致超出速率限制)
+    fal.config({
+      credentials: getNextFalKey()
+    });
+    console.log(`Using FAL_KEY index: ${currentKeyIndex === 0 ? falKeys.length - 1 : currentKeyIndex - 1}`);
+    
     const result = await fal.subscribe("fal-ai/flux/dev/image-to-image", {
       input,
       logs: true,

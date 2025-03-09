@@ -313,8 +313,16 @@
                     <select id="model" onchange="updateModelOptions()">
                         <option value="fal-ai/flux/schnell">Flux.1 [schnell]</option>
                         <option value="fal-ai/flux/dev">Flux.1 [dev]</option>
-                        <option value="fal-ai/flux-pro">Flux Pro</option>
+                        <option value="fal-ai/flux-pro">Flux.1 [pro]</option>
+                        <option value="fal-ai/flux-pro/v1.1">Flux Pro v1.1</option>
+                        <option value="fal-ai/flux-pro/v1.1-ultra">Flux Pro v1.1 Ultra</option>
+                        <option value="custom">Custom Model</option>
                     </select>
+                    
+                    <div id="custom-model-container" style="display: none; margin-top: 10px;">
+                        <label for="custom-model-id">Custom Model ID</label>
+                        <input type="text" id="custom-model-id" placeholder="Enter model ID (e.g. fal-ai/your-model)">
+                    </div>
                     
                     <div style="display: flex; align-items: center; margin-top: 10px;">
                         <label for="prompt" style="margin-right: 10px; margin-top: 0; line-height: 28px;">Prompt</label>
@@ -450,12 +458,19 @@
             const guidanceScaleContainer = document.getElementById('guidance-scale-container');
             const safetyToleranceContainer = document.getElementById('safety-tolerance-container');
             const maxStepsValue = document.getElementById('max-steps-value');
+            const customModelContainer = document.getElementById('custom-model-container');
+
+            if (model === 'custom') {
+                customModelContainer.style.display = 'block';
+            } else {
+                customModelContainer.style.display = 'none';
+            }
 
             if (model === 'fal-ai/flux/schnell') {
                 guidanceScaleContainer.style.display = 'none';
                 safetyToleranceContainer.style.display = 'none';
                 maxStepsValue.textContent = '12';
-            } else if (model === 'fal-ai/flux-pro') {
+            } else if (model === 'fal-ai/flux-pro' || model === 'fal-ai/flux-pro/v1.1' || model === 'custom') {
                 guidanceScaleContainer.style.display = 'block';
                 safetyToleranceContainer.style.display = 'block';
                 maxStepsValue.textContent = '50';
@@ -481,7 +496,7 @@
             numInferenceStepsInput.max = 12;
             guidanceScaleContainer.style.display = 'none';
             safetyToleranceContainer.style.display = 'none';
-        } else if (this.value === 'fal-ai/flux-pro') {
+        } else if (this.value === 'fal-ai/flux-pro' || this.value === 'fal-ai/flux-pro/v1.1' || this.value === 'custom') {
             numInferenceStepsInput.value = 28;
             numInferenceStepsInput.max = 50;
             guidanceScaleContainer.style.display = 'block';
@@ -506,7 +521,18 @@
         async function generateImage() {
             const errorMessageElement = document.getElementById('error-message');
             errorMessageElement.textContent = '';
-            const model = document.getElementById('model').value;
+            let model = document.getElementById('model').value;
+            
+            // 处理自定义模型
+            if (model === 'custom') {
+                const customModelId = document.getElementById('custom-model-id').value.trim();
+                if (!customModelId) {
+                    alert('Please enter a custom model ID');
+                    return;
+                }
+                model = customModelId;
+            }
+            
             const prompt = document.getElementById('prompt').value;
             const imageSize = document.getElementById('image-size').value;
             let numInferenceSteps = parseInt(document.getElementById('num-inference-steps').value);
@@ -538,7 +564,8 @@
                 if (model === 'fal-ai/flux/dev') {
                     requestData.guidance_scale = parseFloat(document.getElementById('guidance-scale').value);
                     requestData.enable_safety_checker = true;
-                } else if (model === 'fal-ai/flux-pro') {
+                } else if (model === 'fal-ai/flux-pro' || model === 'fal-ai/flux-pro/v1.1' || 
+                           (document.getElementById('model').value === 'custom')) {
                     requestData.guidance_scale = parseFloat(document.getElementById('guidance-scale').value);
                     requestData.safety_tolerance = document.getElementById('safety-tolerance').value;
                 }
