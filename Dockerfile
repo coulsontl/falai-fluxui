@@ -17,7 +17,7 @@ RUN npm ci --only=production
 FROM alpine:3.19
 
 # 安装运行时所需最小依赖
-RUN apk add --no-cache nodejs vips
+RUN apk add --no-cache nodejs vips fftw
 
 # 设置工作目录
 WORKDIR /app
