@@ -232,6 +232,66 @@
         #safety-tolerance-container {
             display: none;
         }
+
+        /* 提示词优化弹窗样式 */
+        .prompt-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.8);
+        }
+        
+        .prompt-modal-content {
+            background-color: #2d2d2d;
+            margin: 10% auto;
+            padding: 20px;
+            border-radius: 5px;
+            width: 70%;
+            max-width: 800px;
+            color: #ffffff;
+        }
+        
+        .prompt-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .prompt-modal-close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .prompt-modal-close:hover {
+            color: white;
+        }
+        
+        .optimize-btn {
+            margin-left: 10px;
+            background-color: #4b8bf5;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -256,8 +316,13 @@
                         <option value="fal-ai/flux-pro">Flux Pro</option>
                     </select>
                     
-                    <label for="prompt">Prompt</label>
-                    <textarea id="prompt" rows="4"></textarea>
+                    <div style="display: flex; align-items: center; margin-top: 10px;">
+                        <label for="prompt" style="margin-right: 10px; margin-top: 0; line-height: 28px;">Prompt</label>
+                        <button class="optimize-btn" id="optimize-prompt-btn" style="margin-left: auto; padding: 3px 8px; font-size: 12px; height: 22px; display: flex; align-items: center; justify-content: center; margin-top: 0;">Optimize</button>
+                    </div>
+                    <div style="display: flex;">
+                        <textarea id="prompt" rows="4"></textarea>
+                    </div>
                     
                     <label for="image-size">Image Size</label>
                     <select id="image-size">
@@ -269,6 +334,9 @@
                     
                     <label for="num-inference-steps">Num Inference Steps</label>
                     <input type="number" id="num-inference-steps" value="28">
+                    <small id="inference-steps-hint" style="display: block; color: #aaa; margin-top: 2px;">
+                        Maximum steps: <span id="max-steps-value">28</span>
+                    </small>
                     
                     <div id="guidance-scale-container">
                         <label for="guidance-scale">Guidance Scale</label>
@@ -343,6 +411,28 @@
         <div id="success-message"></div>
     </div>
 
+    <!-- 添加提示词优化弹窗 -->
+    <div id="prompt-modal" class="prompt-modal">
+        <div class="prompt-modal-content">
+            <span class="prompt-modal-close">&times;</span>
+            <h3>Prompt Optimization</h3>
+            <div id="prompt-modal-loading" style="display: none;">
+                <div class="loading-spinner"></div> Optimizing prompt...
+            </div>
+            <div id="prompt-modal-content">
+                <div>
+                    <label for="optimized-prompt">Optimized Prompt:</label>
+                    <textarea id="optimized-prompt" rows="6" style="width: 100%; margin-top: 10px;"></textarea>
+                </div>
+                <div class="prompt-buttons">
+                    <button id="apply-prompt-btn">Apply</button>
+                    <button id="regenerate-prompt-btn">Regenerate</button>
+                    <button id="close-prompt-btn">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const generateBtn = document.getElementById('generate-btn');
         const resultImage = document.getElementById('result-image');
@@ -359,16 +449,20 @@
             const model = document.getElementById('model').value;
             const guidanceScaleContainer = document.getElementById('guidance-scale-container');
             const safetyToleranceContainer = document.getElementById('safety-tolerance-container');
+            const maxStepsValue = document.getElementById('max-steps-value');
 
             if (model === 'fal-ai/flux/schnell') {
                 guidanceScaleContainer.style.display = 'none';
                 safetyToleranceContainer.style.display = 'none';
+                maxStepsValue.textContent = '12';
             } else if (model === 'fal-ai/flux-pro') {
                 guidanceScaleContainer.style.display = 'block';
                 safetyToleranceContainer.style.display = 'block';
+                maxStepsValue.textContent = '50';
             } else {
                 guidanceScaleContainer.style.display = 'block';
                 safetyToleranceContainer.style.display = 'none';
+                maxStepsValue.textContent = '50';
             }
         }
 
@@ -383,15 +477,18 @@
 
     modelSelect.addEventListener('change', function() {
         if (this.value === 'fal-ai/flux/schnell') {
-            numInferenceStepsInput.value = 4;
+            numInferenceStepsInput.value = 12;
+            numInferenceStepsInput.max = 12;
             guidanceScaleContainer.style.display = 'none';
             safetyToleranceContainer.style.display = 'none';
         } else if (this.value === 'fal-ai/flux-pro') {
             numInferenceStepsInput.value = 28;
+            numInferenceStepsInput.max = 50;
             guidanceScaleContainer.style.display = 'block';
             safetyToleranceContainer.style.display = 'block';
         } else {
             numInferenceStepsInput.value = 28;
+            numInferenceStepsInput.max = 50;
             guidanceScaleContainer.style.display = 'block';
             safetyToleranceContainer.style.display = 'none';
         }
@@ -412,8 +509,16 @@
             const model = document.getElementById('model').value;
             const prompt = document.getElementById('prompt').value;
             const imageSize = document.getElementById('image-size').value;
-            const numInferenceSteps = document.getElementById('num-inference-steps').value;
+            let numInferenceSteps = parseInt(document.getElementById('num-inference-steps').value);
             const imageCount = parseInt(document.getElementById('image-count').value);
+            
+            if (model === 'fal-ai/flux/schnell' && numInferenceSteps > 12) {
+                numInferenceSteps = 12;
+                document.getElementById('num-inference-steps').value = 12;
+            } else if (numInferenceSteps > 50) {
+                numInferenceSteps = 50;
+                document.getElementById('num-inference-steps').value = 50;
+            }
 
             const loadingDiv = document.getElementById('loading');
             const resultImagesDiv = document.getElementById('result-images');
@@ -426,7 +531,7 @@
                     model,
                     prompt,
                     image_size: imageSize,
-                    num_inference_steps: parseInt(numInferenceSteps),
+                    num_inference_steps: numInferenceSteps,
                     image_count: imageCount
                 };
 
@@ -661,6 +766,87 @@
         // Load gallery on page load
         loadGallery();
         updateModelOptions();
+
+        // 提示词优化相关代码
+        const optimizePromptBtn = document.getElementById('optimize-prompt-btn');
+        const promptModal = document.getElementById('prompt-modal');
+        const optimizedPromptTextarea = document.getElementById('optimized-prompt');
+        const applyPromptBtn = document.getElementById('apply-prompt-btn');
+        const regeneratePromptBtn = document.getElementById('regenerate-prompt-btn');
+        const closePromptBtn = document.getElementById('close-prompt-btn');
+        const promptModalClose = document.querySelector('.prompt-modal-close');
+        const promptModalLoading = document.getElementById('prompt-modal-loading');
+        const promptModalContent = document.getElementById('prompt-modal-content');
+        
+        // 打开提示词优化弹窗
+        optimizePromptBtn.addEventListener('click', async function() {
+            const promptText = document.getElementById('prompt').value;
+            if (!promptText.trim()) {
+                alert('Please enter a prompt first');
+                return;
+            }
+            
+            promptModal.style.display = 'block';
+            promptModalLoading.style.display = 'block';
+            promptModalContent.style.display = 'none';
+            
+            try {
+                const response = await axios.post('/optimize-prompt', {
+                    prompt: promptText
+                });
+                
+                optimizedPromptTextarea.value = response.data.optimizedPrompt;
+                promptModalLoading.style.display = 'none';
+                promptModalContent.style.display = 'block';
+            } catch (error) {
+                console.error('优化提示词出错:', error);
+                alert('优化提示词时发生错误，请稍后再试');
+                promptModal.style.display = 'none';
+            }
+        });
+        
+        // 应用优化后的提示词
+        applyPromptBtn.addEventListener('click', function() {
+            document.getElementById('prompt').value = optimizedPromptTextarea.value;
+            promptModal.style.display = 'none';
+        });
+        
+        // 重新生成优化提示词
+        regeneratePromptBtn.addEventListener('click', async function() {
+            const promptText = document.getElementById('prompt').value;
+            
+            promptModalLoading.style.display = 'block';
+            promptModalContent.style.display = 'none';
+            
+            try {
+                const response = await axios.post('/optimize-prompt', {
+                    prompt: promptText,
+                    regenerate: true
+                });
+                
+                optimizedPromptTextarea.value = response.data.optimizedPrompt;
+                promptModalLoading.style.display = 'none';
+                promptModalContent.style.display = 'block';
+            } catch (error) {
+                console.error('重新生成优化提示词出错:', error);
+                alert('重新生成优化提示词时发生错误，请稍后再试');
+            }
+        });
+        
+        // 关闭弹窗
+        closePromptBtn.addEventListener('click', function() {
+            promptModal.style.display = 'none';
+        });
+        
+        promptModalClose.addEventListener('click', function() {
+            promptModal.style.display = 'none';
+        });
+        
+        window.addEventListener('click', function(event) {
+            if (event.target == promptModal) {
+                promptModal.style.display = 'none';
+            }
+        });
     </script>
 </body>
 </html>
